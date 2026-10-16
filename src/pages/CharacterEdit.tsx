@@ -8,8 +8,9 @@ import { generateOnce } from '../lib/llm';
 import { Avatar, TopBar, Toast, Field } from '../components';
 import type { CharacterCard } from '../types';
 
-/** 预设提示词：让 AI 把角色设定写丰满 */
-const CHARACTER_PROMPT = `你是角色设定作家。请根据下面提供的角色名和已有信息，写一段丰满、立体的角色设定，包含：外貌特征、身份背景、性格特质、说话风格、一两个标志性的习惯或小动作。要求200-400字，直接输出正文，不要标题、不要解释、不要列表符号。`;
+/** 预设提示词：让 AI 一次性填满角色卡所有栏目（返回 JSON） */
+const CHARACTER_PROMPT = `你是角色卡写作助手。根据提供的角色名和已有信息，创作一份完整丰满的角色卡，严格输出如下 JSON（不要 markdown 代码块、不要解释）：
+{"description":"外貌、身份、能力的丰满设定，200-400字","personality":"性格特质与说话风格，80-150字","scenario":"故事发生的场景背景，60-120字","first_mes":"角色的第一句话，带括号动作描写，60-150字","exampleDialogs":"<START>\\n{{user}}: 一句问好或试探\\n{{char}}: 符合人设的回复","altGreetings":["另一版开场白","再一版开场白"]}`;
 
 function blank(): CharacterCard {
   return {
@@ -63,11 +64,28 @@ export default function CharacterEdit({ id }: { id: string | null }) {
         {
           role: 'user',
           content:
-            `角色名：${form.name || '未命名'}\n已有信息：\n${form.description.trim() || '（无，请自由发挥）'}`,
+            `角色名：${form.name || '未命名'}\n已有信息：\n${[form.description, form.personality, form.scenario].filter((x) => x.trim()).join('\n') || '（无，请自由发挥）'}`,
         },
       ]);
-      if (text) set('description', text);
-      flash('已生成设定，可继续手动修改');
+      const m = /\{[\s\S]*\}/.exec(text);
+      if (!m) throw new Error('AI 未返回有效的 JSON');
+      const j = JSON.parse(m[0]) as Record<string, unknown>;
+      const s = (v: unknown) => (typeof v === 'string' && v.trim() ? v : undefined);
+      const arr = (v: unknown) => (Array.isArray(v) ? v.map(String).filter(Boolean) : undefined);
+      setForm((f) =>
+        f
+          ? {
+              ...f,
+              description: s(j.description) ?? f.description,
+              personality: s(j.personality) ?? f.personality,
+              scenario: s(j.scenario) ?? f.scenario,
+              firstMes: s(j.first_mes) ?? f.firstMes,
+              exampleDialogs: s(j.exampleDialogs) ?? f.exampleDialogs,
+              altGreetings: arr(j.altGreetings) ?? f.altGreetings,
+            }
+          : f,
+      );
+      flash('已生成全部栏目，可继续手动修改');
     } catch (err) {
       flash('生成失败：' + (err as Error).message);
     } finally {

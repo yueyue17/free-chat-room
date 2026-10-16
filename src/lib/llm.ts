@@ -98,8 +98,10 @@ export async function generateOnce(messages: LlmMessage[], mockFallback?: string
   const s = loadSettings();
   if (s.provider === 'mock') {
     await sleep(600);
-    return mockFallback ?? '（演示模式生成的示例）一位喜欢穿米色风衣的旅行者，说话不紧不慢，总是随身带着一本写满了半个大陆的旧笔记。' +
-      '偶尔冷幽默，习惯在句尾停顿半秒再抛出关键的那句话；相信地图之外还有值得迷路的地方。';
+    return (
+      mockFallback ??
+      '{"name":"米色风衣的旅者","description":"一位喜欢穿米色风衣的旅行者，说话不紧不慢，总随身带着一本写满半个大陆的旧笔记。偶尔冷幽默，习惯在句尾停顿半秒再抛出关键的那句话；相信地图之外还有值得迷路的地方。","personality":"温和好奇，冷幽默，观察力强","scenario":"旅途中的随意一站，黄昏的旧车站","first_mes":"（她拍了拍身边的空位）这块石头的视野最好，不看白不看。","exampleDialogs":"<START>\\n{{user}}: 你要去哪？\\n{{char}}: （翻了一页笔记）下一个写着名字的地方。","altGreetings":["（她头也不抬）小心，台阶第三级会响。"]}'
+    );
   }
   let acc = '';
   for await (const chunk of streamChat({ messages, characterName: '助手' })) acc += chunk;

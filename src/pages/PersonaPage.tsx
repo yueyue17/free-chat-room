@@ -5,8 +5,9 @@ import { loadSettings, saveSettings } from '../lib/settings';
 import { generateOnce } from '../lib/llm';
 import { TabBar, TopBar, Toast, Field, EmptyState } from '../components';
 
-/** 预设提示词：让 AI 帮你把人设写丰满 */
-const PERSONA_PROMPT = `你是人设写作助手。请根据下面提供的用户名和已有描述，写一段丰满、立体的用户人设，包含：身份背景、性格特质、说话风格、兴趣爱好、一两个独特的小习惯或细节。要求150-300字，直接输出正文，不要标题、不要解释、不要列表符号。`;
+/** 预设提示词：让 AI 一次性填满人设的名称与描述（返回 JSON） */
+const PERSONA_PROMPT = `你是用户人设写作助手。根据提供的名字和已有描述，塑造一个立体的用户人设。严格输出如下 JSON（不要 markdown 代码块、不要解释）：
+{"name":"人设名称，4-8个字，有辨识度","description":"身份背景、性格特质、说话风格、兴趣爱好、一两个独特的小习惯，150-300字"}`;
 
 export default function PersonaPage() {
   const personas = useLiveQuery(() => db.personas.orderBy('name').toArray(), []) ?? [];
@@ -48,10 +49,13 @@ export default function PersonaPage() {
     try {
       const text = await generateOnce([
         { role: 'system', content: PERSONA_PROMPT },
-        { role: 'user', content: `用户名：${name || '未命名'}\n已有描述：${desc.trim() || '（无，请自由发挥）'}` },
+        { role: 'user', content: `名字：${name || '未命名'}\n已有描述：${desc.trim() || '（无，请自由发挥）'}` },
       ]);
-      if (text) await patch(id, { description: text });
-      flash('已生成，可继续手动修改');
+      const m = /\{[\s\S]*\}/.exec(text);
+      if (!m) throw new Error('AI 未返回有效的 JSON');
+      const j = JSON.parse(m[0]) as { name?: string; description?: string };
+      await patch(id, { name: j.name?.trim() || name, description: j.description?.trim() || desc });
+      flash('已生成名称与描述，可继续修改');
     } catch (err) {
       flash('生成失败：' + (err as Error).message);
     } finally {
@@ -122,10 +126,14 @@ export default function PersonaPage() {
               try {
                 const text = await generateOnce([
                   { role: 'system', content: PERSONA_PROMPT },
-                  { role: 'user', content: `用户名：${s.userName || '未命名'}\n已有描述：${s.userDescription.trim() || '（无，请自由发挥）'}` },
+                  { role: 'user', content: `名字：${s.userName || '未命名'}\n已有描述：${s.userDescription.trim() || '（无，请自由发挥）'}` },
                 ]);
-                if (text) set('userDescription', text);
-                flash('已生成，可继续手动修改');
+                const m = /\{[\s\S]*\}/.exec(text);
+                if (!m) throw new Error('AI 未返回有效的 JSON');
+                const j = JSON.parse(m[0]) as { name?: string; description?: string };
+                set('userName', j.name?.trim() || s.userName);
+                set('userDescription', j.description?.trim() || s.userDescription);
+                flash('已生成名称与描述，可继续修改');
               } catch (err) {
                 flash('生成失败：' + (err as Error).message);
               } finally {

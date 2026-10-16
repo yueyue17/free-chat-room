@@ -18,6 +18,34 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const backupRef = useRef<HTMLInputElement>(null);
+  const [models, setModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+
+  async function fetchModels() {
+    if (!s.baseUrl.trim()) {
+      setTestResult('❌ 请先填写接口地址');
+      return;
+    }
+    setLoadingModels(true);
+    setModels([]);
+    try {
+      const res = await fetch(`${s.baseUrl.replace(/\/+$/, '')}/models`, {
+        headers: { ...(s.apiKey ? { Authorization: `Bearer ${s.apiKey}` } : {}) },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}：${(await res.text()).slice(0, 120)}`);
+      const j = (await res.json()) as { data?: { id?: string }[] };
+      const list = (j.data ?? []).map((m) => m.id ?? '').filter(Boolean).sort();
+      if (!list.length) throw new Error('接口未返回模型列表');
+      setModels(list);
+      if (!list.includes(s.model) && list.length) set('model', list[0]);
+      setTestResult(`✓ 拉取到 ${list.length} 个模型，在下方下拉框选择`);
+    } catch (err) {
+      setTestResult('❌ 拉取失败：' + (err as Error).message);
+    } finally {
+      setLoadingModels(false);
+    }
+  }
 
   function set<K extends keyof Settings>(k: K, v: Settings[K]) {
     const next = { ...s, [k]: v };
@@ -112,12 +140,27 @@ export default function SettingsPage() {
             <Field label="API Key" hint="仅保存在你的浏览器本地，不会上传">
               <input className="input" type="password" value={s.apiKey} onChange={(e) => set('apiKey', e.target.value)} placeholder="sk-…" />
             </Field>
-            <Field label="模型名称">
+            <Field label="模型名称" hint="可点「拉取模型」自动获取">
               <input className="input" value={s.model} onChange={(e) => set('model', e.target.value)} placeholder="deepseek-chat / gpt-4o-mini …" />
             </Field>
-            <button className="btn" disabled={testing} onClick={() => void runTest()}>
-              {testing ? '测试中…' : '测试连接'}
-            </button>
+            {models.length > 0 && (
+              <Field label={`可用模型（${models.length} 个，点选即填入）`}>
+                <select className="input select" value="" onChange={(e) => e.target.value && set('model', e.target.value)}>
+                  <option value="">选择模型…</option>
+                  {models.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            <div className="btn-row">
+              <button className="btn" disabled={loadingModels} onClick={() => void fetchModels()}>
+                {loadingModels ? '拉取中…' : '⬇ 拉取模型'}
+              </button>
+              <button className="btn" disabled={testing} onClick={() => void runTest()}>
+                {testing ? '测试中…' : '测试连接'}
+              </button>
+            </div>
             {testResult && <div className="hint box">{testResult}</div>}
           </>
         )}
